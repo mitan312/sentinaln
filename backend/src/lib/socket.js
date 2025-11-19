@@ -6,13 +6,14 @@ import express from "express";
 const app = express();
 const server = http.createServer(app);
 
-// Use env var so you can set production frontend URL in Render/Vercel
+// Use env var for deploy
 const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:5173";
+
+console.log("🚀 FRONTEND_URL SOCKET CORS:", FRONTEND_URL);
 
 const io = new Server(server, {
   cors: {
     origin: [FRONTEND_URL],
-    methods: ["GET", "POST"],
     credentials: true,
   },
 });
@@ -20,7 +21,6 @@ const io = new Server(server, {
 // map userId -> socketId
 const userSocketMap = {};
 
-// helper to get socket id of a user
 export function getReceiverSocketId(userId) {
   return userSocketMap[userId];
 }
@@ -28,21 +28,17 @@ export function getReceiverSocketId(userId) {
 io.on("connection", (socket) => {
   console.log("Socket connected:", socket.id);
 
-  // read userId from either handshake auth or query (adjust depending on frontend)
-  // recommended: frontend set auth: { userId } when connecting
   const userId =
-    (socket.handshake && socket.handshake.auth && socket.handshake.auth.userId) ||
-    (socket.handshake && socket.handshake.query && socket.handshake.query.userId);
+    socket.handshake?.auth?.userId ||
+    socket.handshake?.query?.userId;
 
   if (userId) {
     userSocketMap[userId] = socket.id;
     console.log("User connected:", userId, "->", socket.id);
   }
 
-  // broadcast current online users list to all clients
   io.emit("getOnlineUsers", Object.keys(userSocketMap));
 
-  // example private message event (adjust to your app events)
   socket.on("privateMessage", ({ toUserId, message }) => {
     const toSocketId = userSocketMap[toUserId];
     if (toSocketId) {
@@ -51,10 +47,8 @@ io.on("connection", (socket) => {
   });
 
   socket.on("disconnect", () => {
-    console.log("A user disconnected", socket.id);
-    if (userId) {
-      delete userSocketMap[userId];
-    }
+    console.log("User disconnected:", socket.id);
+    if (userId) delete userSocketMap[userId];
     io.emit("getOnlineUsers", Object.keys(userSocketMap));
   });
 });
